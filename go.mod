@@ -1,4 +1,4 @@
-module github.com/google/docsy
+module github.com/digitalpixies/docsy
 
 go 1.12
 
