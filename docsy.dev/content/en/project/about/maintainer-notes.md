@@ -1,0 +1,448 @@
+---
+title: Maintainer notes
+description: Notes for Docsy maintainers
+aliases: [contributing, ../contributing]
+cSpell:ignore: hugo creatordate
+---
+
+For our main contributing page covering license agreements, code of conduct and
+more, see [Contributing][]. This page is for **maintainers only**.
+
+## PR descriptions
+
+Generally speaking, a PR opening comment should be a Markdown list that explains
+the “why” behind the changes, and at a very high level what was changed. Start
+each item with a verb in the present tense, 3rd person singular.
+
+PR authors are _encouraged_ to flag the **scope of changes** when a PR touches
+Docsy's [public customization surface][public] -- especially for [breaking
+changes][breaking change] -- to help reviewers and release-time audits. For
+example:
+
+```markdown
+- Scope: breaking (removal), user-facing (new)
+```
+
+Suggested scope labels (use one or more):
+
+- **breaking**, **user-facing**, **internal-only**, **docs-only**.
+
+Optionally qualify with **kinds** in parentheses, mapping to release-blog and
+changelog sections: **new**, **change**, **fix**, **removal**, **deprecation**.
+
+The release-time audit (see [Release-prep audit](#release-prep-audit)) is the
+source of truth for what gets documented; PR-level scope labels are a hint, not
+a substitute.
+
+## Hugo version pins
+
+From the repo root:
+
+```sh
+npm run set:hugo:version -- X.Y.Z
+npm install  # optional, if hugo is already installed
+```
+
+This updates:
+
+- [package.json][]: `config.hugo_version`, used by [install-hugo.sh][], which
+  installs `hugo-extended` into `docsy.dev` if it is not already present.
+- [docsy.dev/config/_default/hugo.yaml][]:
+  - `params.hugoMinVersion` / `&hugoMinVersion`
+  - Note: `module.hugoVersion.min` stays as `*hugoMinVersion`
+- [docsy.dev/package.json][]: `hugo-extended`
+
+## Release-prep audit
+
+Before drafting the changelog entry and release blog post, run a careful audit
+of every PR and raw commit in the release range so nothing user-visible slips
+through (motivated by the version-menu near-miss during 0.15.0 prep).
+
+For each PR/commit in `git log v<prev>..main`:
+
+1. Inspect the actual diff (not just the title or PR description). Use
+   `gh pr view <num>` and `git show <sha>` as needed.
+2. Classify the change: **breaking**, **user-facing**, **internal-only**, or
+   **docs-only** (see definitions in [Public customization surface][public] and
+   [Breaking change][breaking change]).
+3. For every **breaking** or **user-facing** item, verify it appears in **both**
+   the [changelog][] and the release blog post — with cross-links to the
+   relevant user-guide sections where applicable.
+4. Be especially alert to: new/renamed params, partials, shortcodes, layouts,
+   CSS classes, i18n keys, default-behavior shifts, and changes to the version
+   menu, navigation, or other rendered output.
+
+Capture the audit as a working document under `tasks/<release>/release-prep/`
+(see prior releases for examples) so reviewers can sanity-check the
+classifications. Treat the audit — not PR-level scope hints — as the source of
+truth for what the changelog and release blog must cover.
+
+## Publishing a release
+
+These notes are WIP for creating a **release** from a local copy of the repo.
+These instructions assume the release is:
+
+- **{{% dev-version final %}}**
+
+If not adjust accordingly.
+
+> [!IMPORTANT]
+>
+> Before creating a release, do a [release-prep audit](#release-prep-audit) and
+> use it to drive the changelog and release-blog updates in the next two steps.
+
+1.  **Change directory** to your local Docsy repo.
+    - Expecting final adjustments as you prepare for the release? Create a
+      branch to work from. For example:
+
+      ```sh
+      git checkout -b release-{{% dev-version final %}}-prep
+      # Or you have a local create-branch alias:
+      gcb release-{{% dev-version final %}}-prep
+      ```
+
+    - Serve the site and continue working through these steps from the served
+      version of these notes.
+
+2.  **Create or update a [changelog][] entry** for {{% dev-version final %}}.
+    - This step is driven by the [release-prep audit](#release-prep-audit).
+    - The section should provide a brief summary of breaking changes using the
+      section template at the end of the file.
+    - Ensure to remove the UNRELEASED note, if still present.
+    - You'll create a new section for the next release in a later step.
+
+3.  **Update the release report blog post** for {{% dev-version final %}}, if
+    any.
+    - Remove draft status.
+    - Set `date` (or `lastmod` if already published) to today's date.
+
+4.  Run `npm run fix`.
+
+5.  **Update Docsy version** to {{% dev-version final %}} using the following
+    from a (bash or zsh) terminal.
+    - First set the `VERSION` variable; we use it throughout the steps below.
+
+      ```sh
+      VERSION={{% dev-version final %}}
+      ```
+
+    - Then run the `set:version` script.
+
+      Docsy is probably already at `{{% dev-version final %}}-dev`, so you can
+      run:
+
+      ```sh
+      npm run set:version
+      ```
+
+      Otherwise, set the version explicitly:
+
+      ```sh
+      npm run set:version -- --version $VERSION
+      ```
+
+      Both forms update the `version` related fields in [package.json][] and
+      [docsy.dev/config][] files.
+
+6.  <a id="ci-test-step">Run `npm run ci:test`</a>, which runs `ci:prepare` and
+    more to ensure that, e.g., vendor assets and [go.mod][] dependencies are
+    up-to-date, etc.
+
+7.  **Submit a PR with your changes**.
+    - Set the `BASE` variable to the target branch: `main` if this is a stable
+      release, and `release` for patch releases.
+
+      ```sh
+      BASE=main
+      ```
+
+    - Commit any changes accumulated from the previous steps using this title:
+
+      ```text
+      Release {{% param tdVersion.latest %}} preparation
+      ```
+
+    - Create a PR (with version-checks disabled) using the following command
+      that will open a PR-creation page in your browser:
+
+      ```sh
+      export SKIP_VERSION_CHECK=1
+      gh pr create --web --title "Release $VERSION preparation" \
+        --base $BASE \
+        --body "- Contributes to #<ADD-RELEASE-PREP-ISSUE-HERE>"
+      ```
+
+    - Use the web interface to fill in the PR details.
+    - Submit the PR.
+
+8.  **Test the PR** branch from selected sites, and push any required
+    adjustments.
+    - If the test site uses Docsy as a Git submodule:
+
+      ```sh
+      cd themes/docs
+      git fetch
+      git switch -t REPO/BRANCH-NAME # e.g. chalin/chalin-m24-0.14.0-pre-release
+      ```
+
+9.  **Get PR approved and merged**.
+
+10. **Pull the PR** to get the last changes.
+
+11. **Test Docsy** from [docsy-example][], for example.
+
+12. **Ensure** that you're:
+    - On the target `$BASE` branch
+    - At the commit that you want to tag as {{% param tdVersion.latest %}}
+
+13. **Create the new tag** for {{% param tdVersion.latest %}}.
+    - Set the REL variable to the release version or use the `VERSION` variable
+      if you set it in the previous step.
+
+      ```sh
+      REL=v${VERSION:-{{% param tdVersion.latest %}}}
+      echo "REL=$REL"
+      ```
+
+    - Create the new tag.
+
+      ```sh
+      git tag $REL
+      ```
+
+    - Double check:
+
+      ```sh
+      git tag --sort=-creatordate | head -3
+      ```
+
+14. **Push the new tag**: either to all remotes at once, or one at a time.
+
+    <details>
+    <summary class="h6 text-info">Push to all remotes</summary>
+
+    <!-- Prevent Prettier from gluing the list to this HTML hunk -->
+    - List the remotes so you know what you'll be pushing to:
+
+      ```sh
+      git remote
+      ```
+
+    - Check that the `push-all-remotes` alias is defined, and if not, define it:
+
+      ```sh
+      git config --global --list | grep alias.push-all-remotes
+      ```
+
+      <details>
+      <summary class="h6 text-primary">Define a `push-all-remotes` alias</summary>
+
+      First check if the `push-all-remotes` alias is already defined:
+
+      ```sh
+      git config --global --list | grep alias.push-all-remotes
+      ```
+
+      If not, define the alias:
+
+      ```sh
+      git config --global alias.push-all-remotes \
+        '!f() { for r in $(git remote); do (set -x; git push "$r" "$1"); done; }; f'
+      ```
+
+      > [!NOTE]
+      >
+      > You only need to define the alias once. Omit `--global` from the command
+      > above to make the alias available only in the current repository rather
+      > than all repositories.
+
+      </details>
+
+    - If you have git hooks enabled that auto-update the Docsy package version,
+      disable the hook check for now:
+
+      ```sh
+      export SKIP_VERSION_CHECK=1
+      ```
+
+    - Push the tag to the remotes:
+
+      ```console
+      $ git push-all-remotes $REL
+      + git push origin {{% param tdVersion.latest %}}
+      * [new tag]         {{% param tdVersion.latest %}} -> {{% param tdVersion.latest %}}
+      + git push upstream {{% param tdVersion.latest %}}
+      * [new tag]         {{% param tdVersion.latest %}} -> {{% param tdVersion.latest %}}
+      ...
+      ```
+
+    - Sanity check over `upstream` for example:
+
+      ```sh
+      git ls-remote --tags upstream | grep $REL
+      ```
+
+    - Unset the SKIP_VERSION_CHECK variable when you're done:
+
+      ```sh
+      unset SKIP_VERSION_CHECK
+      ```
+
+    </details>
+
+    <details>
+    <summary class="h6">Push to a single remote</summary>
+
+    <!-- Prevent Prettier from gluing the list to this HTML hunk -->
+    - Push to a single remote at a time, such as `upstream`:
+
+    ```sh
+    git push upstream $REL
+    ```
+
+    - Sanity check over `upstream` for example:
+
+      ```sh
+      git ls-remote --tags upstream | grep $REL
+      ```
+
+    </details>
+
+15. Update the [deploy/prod][] branch from `$BASE`.
+
+    For stable releases from `main`, use:
+
+    ```sh
+    git checkout deploy/prod
+    git merge --ff-only main
+    git push-all-remotes deploy/prod
+    ```
+
+    For patch releases from `release`, selectively merge from `$BASE`.
+
+    The branch update will trigger a production deploy of the website.
+
+16. Wait for the production deploy to complete and check that [docsy.dev][] has
+    been updated to the new release.
+
+17. **[Draft a new release][]** using GitHub web; fill in the fields as follows:
+    - Visit [tags][] to find the new release tag {{% param tdVersion.latest %}}.
+
+    - Select Create a new release from the {{% param tdVersion.latest %}} tag
+      dropdown menu
+
+    - **Release title**: use the release version.
+
+      ```text
+      {{% param tdVersion.latest %}}
+      ```
+
+    - Click **Generate release notes** to get the release details inserted into
+      the release notes text area.
+
+    - Add the following text atop the generated release notes:
+
+      ```markdown
+      {{% release-summary %}}
+      ```
+
+    - Select **Create a discussion for this release**.
+
+18. **Publish the release**: click _Publish release_.
+
+19. Test the release with a downstream project and/or the [docsy-example][]
+    site.
+
+20. If you find issues, determine whether they need to be fixed immediately. If
+    so, get fixes submitted, reviewed and approved. Go back to step 1 to publish
+    a dot release.
+
+If all is well, release the Docsy example as detailed next.
+
+## Docsy example release
+
+The steps you follow are similar to the ones above for the Docsy release, but
+with the following modifications:
+
+1.  **Update the version** of the example to {{% param version %}}:
+
+    ```sh
+    VERSION={{% param version %}}
+    npm run set:version:example -- --version $VERSION
+    ```
+
+2.  Perform [step 6](#ci-test-step) onwards as above to test, create a PR,
+    create a release and publish it with one difference:
+    - To create a new release draft, visit [Docsy-example release draft][].
+    - Once the deploy/prod branch has been updated, wait for the production
+      deploy to complete and check that [example.docsy.dev][] has been updated
+      to the new release.
+
+[Docsy-example release draft]:
+  https://github.com/google/docsy-example/releases/new
+[example.docsy.dev]: https://example.docsy.dev
+
+## Post Docsy-release followup
+
+Assuming that both the Docsy and Docsy-example releases {{% param version %}}
+have been successfully deployed, and that at least one other project has been
+successfully tested with the new release, then perform the following actions
+before any further changes are merged into the `main` branch:
+
+1. Update the package version to a dev ID for Docsy and Docsy-example:
+
+   ```console
+   $ npm run -s set:version:git-info
+   ✓ Updated package.json version: 0.14.3 → 0.14.3-dev+003-over-main-cf4f514b
+   ✓ Updated docsy.dev/config/_default/params.yaml version: 0.14.3 → 0.14.3-dev
+   ✓ Updated docsy.dev/config/_default/params.yaml tdBuildId: (none) → 003-over-main-cf4f514b
+   ...
+   $ npm run -s set:version:example:git-info
+   ...
+   ```
+
+2. In the [Changelog][]:
+   - **Create a new entry** for the next release by copying the ENTRY TEMPLATE
+     at the end of the file.
+
+   - **Fix the new release URL**, which ends with `latest?FIXME=...`, so that it
+     refers to the actual release, now that it exists.
+
+3. **Submit a PR with your changes**, using a title like:
+
+   ```text
+   Set version to {{% param tdVersion.latest %}}
+   ```
+
+4. **Get PR approved and merged**.
+
+## Release helper scripts
+
+- NPM scripts: `set:version` and `set:version:*`; **`set:hugo:version`** (see
+  [Hugo version pins](#hugo-version-pins))
+- `scripts/get-build-id.sh`: Builds `X.Y.Z-dev+…-over-main-…` from the latest
+  semver tag on `main`, commit offset, and tip SHA; if **`package.json`**’s
+  X.Y.Z core is already **greater** than that git-derived core, keeps the higher
+  core (release prep ahead of tagging).
+- `scripts/set-package-version/index.mjs`: Low-level version manager. See script
+  help for usage.
+
+<!-- prettier-ignore-start -->
+
+[breaking change]: /project/about/changelog/#breaking-change
+[changelog]: /project/about/changelog/
+[contributing]: /docs/contributing/
+[deploy/prod]: <{{% param github_repo %}}/tree/deploy/prod>
+[docsy-example]: <{{% param github_repo %}}-example>
+[docsy.dev]: <{{% _param baseURL %}}>
+[docsy.dev/config]: <{{% param github_repo %}}/blob/main/docsy.dev/config/>
+[docsy.dev/config/_default/hugo.yaml]: <{{% param github_repo %}}/blob/main/docsy.dev/config/_default/hugo.yaml>
+[docsy.dev/package.json]: <{{% param github_repo %}}/blob/main/docsy.dev/package.json>
+[Draft a new release]: <{{% param github_repo %}}/releases/new>
+[go.mod]: <{{% param github_repo %}}/blob/main/go.mod>
+[install-hugo.sh]: <{{% param github_repo %}}/blob/main/docsy.dev/scripts/install-hugo.sh>
+[package.json]: <{{% param github_repo %}}/blob/main/package.json>
+[public]: /project/about/changelog/#public
+[tags]: <{{% param github_repo %}}/tags>
+
+<!-- prettier-ignore-end -->

@@ -1,4 +1,5 @@
-# Build Docsy & the User Guide and run all repo checks across OSs.
+# Build Docsy & the website and run all repo checks across OSs.
+# cSpell:ignore docsy
 
 name: test
 
@@ -9,7 +10,9 @@ on:
   # schedule:
   #   - cron: '11 0 * * *' # 11 past midnight every day
   workflow_dispatch:
-
+permissions:
+  contents: read
+  
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -18,14 +21,24 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: package.json
+
       - run: npm install --omit=optional
+
       - if: runner.os != 'Windows'
-        run: npm run test:all
+        run: npm run ci:test
+
       - if: runner.os == 'Windows'
-        run: npm run ci:prepare && npm run cd:docs build && npm run ci:post
+        run: npm run ci:prepare && npm run -C docsy.dev build && npm run ci:post
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: test-site-${{ matrix.os }}
+          path: |
+            docsy.dev/public
